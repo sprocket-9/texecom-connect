@@ -1,9 +1,13 @@
-FROM python:2
+FROM python:3
 
 WORKDIR /usr/src/app
 
 COPY alarm-monitor.py ./
 COPY texecomConnect.py ./
+COPY texecomDefines.py ./
+COPY area.py ./
+COPY user.py ./
+COPY zone.py ./
 COPY hexdump.py ./
 
 COPY requirements.txt ./

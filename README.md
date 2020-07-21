@@ -19,6 +19,7 @@ You need to set a UDL password for your panel. If you don't have a UDL password 
 The module currently decodes every event I've seen from the panel, and polls the panel for information like current time / voltage levels. It subscribes to all events from the alarm panel, so will display any zone changes, arm/disarm, etc.
 
 It does not currently support arm/disarming.
+Update Jul2020 (Charly Andserson): arm/disarming is now supported
 
 It allows the caller to register handlers for zone activation events.
 
@@ -26,14 +27,18 @@ My own main use for this module is:
 
 1. Keeping a log of everything that happens in the alarm system
 2. Using zone activations to push notifications to my iPhone/Apple watch, including frame grabs from my external IP cameras - I do this using https://pushover.net
+Update Jul2020 (charly Anderson): 3. integration with Home Assistant with arm/disarm of areas using mqtt
 
 ## Using it
 
 You need python installed, including the crcmod ('sudo -s pip install crcmod' will install it if you don't have it). The module is written in python2 but I believe could be made compatible with python3 as well with some fairly easy changes.
+Update Jul2020 (charly Anderson): module is now at Python 3.8 level
 
 clone this git repo, then edit alarm-monitor.py to have the correct IP address, port number and UDL password, then just run the script:
 
 `./alarm-monitor.py`
+
+Update Jul2020 (charly Anderson): Configuration of your Areas and associated Area flags will enable arm/disarm via mqtt. Its advisable to limit access to the subscribe topic on your mqtt broker to give a level of security.
 
 ## Contributions
 

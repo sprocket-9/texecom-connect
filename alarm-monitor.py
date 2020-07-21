@@ -3,6 +3,7 @@
 # Decoder for Texecom Connect API/Protocol
 #
 # Copyright (C) 2018 Joseph Heenan
+# Updates Jul 2020 Charly Anderson
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -16,122 +17,167 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-from __future__ import print_function
 
 import os
 import sys
 import json
+import atexit
 
 from texecomConnect import TexecomConnect
 
 import paho.mqtt.client as paho
 
-broker_url = os.getenv('BROKER_URL','192.168.1.1')
-broker_port = os.getenv('BROKER_PORT',1883)
-broker_user = os.getenv('BROKER_USER',None)
-broker_pass = os.getenv('BROKER_PASS',None)
 
-def on_message(client, userdata, message):
-    time.sleep(1)
-    print("received message =",str(message.payload.decode("utf-8")))
+class TexecomMqtt:
 
-client = paho.Client()
+    log_mqtt_traffic = False
 
-client.username_pw_set(broker_user, broker_pass)
-client.on_message=on_message
+    @staticmethod
+    def on_connect(client, userdata, flags, rc):
+        if len(topic_subs[0]) > 0:
+            client.subscribe(topic_root + "/alarm_control_panel/+/command/#")
 
-print("connecting to broker ", broker_url)
-client.connect(broker_url, broker_port)
-client.loop_start()
+    @staticmethod
+    def on_message(client, userdata, message):
+        # Arm/Disarm/Reset
+        # To give a level of security its advisable to limit access to the subscribe topic on the mqtt broker
+        topic = message.topic
+        if TexecomMqtt.log_mqtt_traffic:
+            print(
+                "topic: " + topic + " received message =",
+                str(message.payload.decode("utf-8")),
+            )
+        topicbase = topic_root + "/alarm_control_panel/"
+        if len(topic) > len(topicbase):
+            idx = topic.find("/", len(topicbase))
+            if idx >= 0:
+                subtopic = topic[len(topicbase) : idx]
+                if subtopic in topic_subs:
+                    subtopicIdx = topic_subs.index(subtopic)
+                    if len(topic_areamaps) >= subtopicIdx:
+                        areamap = topic_areamaps[subtopicIdx]
+                        area_bitmap = bytes.fromhex(areamap)
+                        if message.payload.decode("utf-8") == "arm":
+                            tc.requestArmAreas(area_bitmap)
+                        elif message.payload.decode("utf-8") == "disarm":
+                            tc.requestDisArmAreas(area_bitmap)
+                        elif message.payload.decode("utf-8") == "reset":
+                            tc.requestResetAreas(area_bitmap)
 
-class TexecomConnectMqtt(TexecomConnect):
-    # Overload get_zone_details to publish zone information to MQTT
-    def get_zone_details(self, zone_number):
-        zone = super(TexecomConnectMqtt, self).get_zone_details(zone_number)
-        if zone.zoneType != self.ZONETYPE_UNUSED:
-            if zone.zoneType == 1:
-                HAZoneType = "door"
-            elif zone.zoneType == 8:
-                HAZoneType = "safety"
-            else:
-                HAZoneType = "motion"
-            name = str.lower((zone.text).replace(" ", "_"))
-            topicbase = str("homeassistant/binary_sensor/" + name)
-            configtopic = str(topicbase + "/config")
-            statetopic = str(topicbase + "/state")
-            message = {
-                "name": name,
-                "device_class": HAZoneType,
-                "state_topic": statetopic,
-                "payload_on": "1",
-                "payload_off": "0",
-                "unique_id": ".".join([self.panelType, name]),
-                "device": {
-                    "name": "Texecom " + self.panelType + " " + str(self.numberOfZones),
-                    "identifiers": "123456789", #TODO panel serial number?
-                    "manufacturer": "Texecom",
-                    "model": self.panelType + " " + str(self.numberOfZones)
-                }
+    @staticmethod
+    def zone_details_callback(zone, panelType, numberOfZones):
+        if zone.zoneType == 1:
+            HAZoneType = "door"
+        elif zone.zoneType == 8:
+            HAZoneType = "safety"
+        else:
+            HAZoneType = "motion"
+        name = str.lower((zone.text).replace(" ", "_"))
+        topicbase = topic_root + "/binary_sensor/" + name
+        configtopic = topicbase + "/config"
+        statetopic = topicbase + "/state"
+        message = {
+            "name": name,
+            "device_class": HAZoneType,
+            "state_topic": statetopic,
+            "payload_on": "1",
+            "payload_off": "0",
+            "unique_id": ".".join([panelType, name]),
+            "device": {
+                "name": "Texecom " + panelType + " " + str(numberOfZones),
+                "identifiers": "123456789",  # TODO panel serial number?
+                "manufacturer": "Texecom",
+                "model": panelType + " " + str(numberOfZones)
             }
-            # self.log(configtopic + ":" + json.dumps(message))
-            client.publish(configtopic,json.dumps(message), retain=True)
+        }
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (configtopic, json.dumps(message)))
+        client.publish(configtopic, json.dumps(message), retain=True)
         return zone
 
-    # Overload get_area_details to publish area information to MQTT
-    def get_area_details(self, areaNumber):
-        area = super(TexecomConnectMqtt, self).get_area_details(areaNumber)
-        name = str.lower((area.name).replace(" ", "_"))
-        topicbase = str("homeassistant/alarm_control_panel/" + name)
-        configtopic = str(topicbase + "/config")
-        statetopic = str(topicbase + "/state")
-        commandtopic = str(topicbase + "/command")
+    @staticmethod
+    def area_details_callback(area, panelType, numberOfZones):
+        name = str.lower((area.text).replace(" ", "_"))
+        topicbase = topic_root + "/alarm_control_panel/" + name
+        configtopic = topicbase + "/config"
+        statetopic = topicbase + "/state"
+        commandtopic = topicbase + "/command"
         message = {
             "name": name,
             "state_topic": statetopic,
             "command_topic": commandtopic,
-            "unique_id": ".".join([self.panelType, "area", name]),
+            "unique_id": ".".join([panelType, "area", name]),
             "device": {
-                "name": "Texecom " + self.panelType + " " + str(self.numberOfZones),
-                "identifiers": "123456789", #TODO panel serial number?
+                "name": "Texecom " + panelType + " " + str(numberOfZones),
+                "identifiers": "123456789",  # TODO panel serial number?
                 "manufacturer": "Texecom",
-                "model": self.panelType + " " + str(self.numberOfZones)
+                "model": panelType + " " + str(numberOfZones)
             }
         }
-        # self.log(configtopic + ":" + json.dumps(message))
-        client.publish(configtopic,json.dumps(message), retain=True)
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (configtopic, json.dumps(message)))
+        client.publish(configtopic, json.dumps(message), retain=True)
         return area
 
+    @staticmethod
+    def zone_status_event(zone):
+        topic = (
+            topic_root
+            + "/binary_sensor/"
+            + str.lower((zone.text).replace(" ", "_"))
+            + "/state"
+        )
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (topic, zone.active))
+        client.publish(topic, zone.active, retain=True)
 
-def message_handler(payload):
-    tc.log(tc.decode_message_to_text(payload))
-    msg_type, payload = payload[0], payload[1:]
-    if msg_type == tc.MSG_ZONEEVENT:
-        zone_number = ord(payload[0])
-        zone_bitmap = ord(payload[1])
-        zone = tc.get_zone(zone_number)
-        zone.state = zone_bitmap & 0x3
-        topic = "homeassistant/binary_sensor/"+str.lower((zone.text).replace(" ", "_"))+"/state"
-        if zone.state == 1:
-            zone.active = True
-        else:
-            zone.active = False
-        tc.log("MQTT Update %s: %s" % (topic, zone.state))
-        client.publish(topic,zone.state)
-    elif msg_type == tc.MSG_AREAEVENT:
-        area_number = ord(payload[0])
-        area_state = ord(payload[1])
-        area_state_str = ["disarmed", "pending", "pending", "armed_away", "armed_night", "triggered"][area_state]
-        area = tc.get_area(area_number)
-        area.state = area_state_str
-        topic = "homeassistant/alarm_control_panel/" + str.lower((area.name).replace(" ", "_"))+"/state"
-        tc.log("MQTT Update %s: %s" % (topic, area.state))
-        client.publish(topic, area.state)
+    @staticmethod
+    def area_status_event(area):
+        area_state_str = [
+            "disarmed",
+            "pending",
+            "pending",
+            "armed_away",
+            "armed_night",
+            "triggered",
+        ][area.state]
+        topic = (
+            topic_root
+            + "/alarm_control_panel/"
+            + str.lower((area.text).replace(" ", "_"))
+            + "/state"
+        )
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (topic, area_state_str))
+        client.publish(topic, area_state_str, retain=True)
+
+    @staticmethod
+    def alive_event():
+        available = "online"
+        topic = topic_root + "/alarm_control_panel/state"
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (topic, available))
+        client.publish(topic, available, retain=True)
+
+    @staticmethod
+    def log_event(message):
+        topic = topic_root + "/alarm_control_panel/log"
+        if TexecomMqtt.log_mqtt_traffic:
+            print("MQTT Update %s: %s" % (topic, message))
+        client.publish(topic, message)
+
+    @staticmethod
+    def exiting():
+        print("exiting")
+        TexecomMqtt.log_event("Exiting alarm-monitor.")
 
 
 # disable buffering to stdout when it's redirected to a file/pipe
 # This makes sure any events appear immediately in the file/pipe,
 # instead of being queued until there is a full buffer's worth.
-class Unbuffered(object):
+
+
+class Unbuffered:
     def __init__(self, stream):
         self.stream = stream
 
@@ -146,14 +192,51 @@ class Unbuffered(object):
     def __getattr__(self, attr):
         return getattr(self.stream, attr)
 
-if __name__ == '__main__':
-    texhost = os.getenv('TEXHOST','192.168.1.9')
-    texport = os.getenv('TEXPORT',10001)
+
+if __name__ == "__main__":
+    # Texecom config
+    texhost = os.getenv("TEXHOST", "192.168.1.9")
+    texport = os.getenv("TEXPORT", 10001)
     # This is the default UDL password for a factory panel. For any real
     # installation, use wintex to set the UDL password in the panel to a
     # random 16 character alphanumeric string.
-    udlpassword = os.getenv('UDLPASSWORD','1234')
+    udlpassword = os.getenv("UDLPASSWORD", "1234")
+    # MQTT config
+    broker_url = os.getenv("BROKER_URL", "192.168.1.1")
+    broker_port = os.getenv("BROKER_PORT", 1883)
+    broker_user = os.getenv("BROKER_USER", None)
+    broker_pass = os.getenv("BROKER_PASS", None)
+    topic_root = os.getenv("MQTT_ROOT_TOPIC", "homeassistant")
+    # This is the name of your Areas for arm/disarm via mqtt. They are mapped onto the equivlent areamap.
+    # example of MQTT_AREAS and MQTT_AREAMAPS below defines (in order) Area1-4 ('all'), Area1('ground_floor'), Area2('upstairs'), Area3('outside'), Area4('shed')
+    topic_subs = os.getenv(
+        "MQTT_AREAS", "all,ground_floor,upstairs,outside,shed"
+    ).split(",")
+    topic_areamaps = os.getenv(
+        "MQTT_AREAMAPS",
+        "0F000000000000,01000000000000,02000000000000,04000000000000,08000000000000",
+    ).split(",")
 
     sys.stdout = Unbuffered(sys.stdout)
-    tc = TexecomConnectMqtt(texhost, texport, udlpassword, message_handler)
+
+    client = paho.Client()
+    client.username_pw_set(broker_user, broker_pass)
+    client.on_message = TexecomMqtt.on_message
+    client.on_connect = TexecomMqtt.on_connect
+    client.will_set(topic_root + "/alarm_control_panel/state", "offline")
+    print("connecting to broker ", broker_url)
+    client.connect(broker_url, broker_port)
+    client.loop_start()
+
+    tc = TexecomConnect(texhost, texport, udlpassword)
+    tc.enable_output_events(False)
+    tc.on_alive_event(TexecomMqtt.alive_event)
+    tc.on_area_event(TexecomMqtt.area_status_event)
+    tc.on_zone_event(TexecomMqtt.zone_status_event)
+    tc.on_area_details(TexecomMqtt.area_details_callback)
+    tc.on_zone_details(TexecomMqtt.zone_details_callback)
+    tc.on_log_event(TexecomMqtt.log_event)
+
+    atexit.register(TexecomMqtt.exiting)
+
     tc.event_loop()

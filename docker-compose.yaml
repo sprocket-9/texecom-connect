@@ -9,3 +9,5 @@ services:
       - BROKER_URL=192.168.1.2
       - BROKER_USER=user
       - BROKER_PASS=pass
+      - MQTT_AREAS=all,ground_floor,upstairs,outside,shed
+      - MQTT_AREAMAPS=0F000000000000,01000000000000,02000000000000,04000000000000,08000000000000
