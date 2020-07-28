@@ -570,6 +570,8 @@ class TexecomConnect(TexecomDefines):
     def get_armed_area_state(self):
         # we just track armed state (not part arming or part armed etc)
         outputAreaBitmaps = self.get_area_flags(21, 1)
+        if outputAreaBitmaps is None:
+            return None
         return self.saveAreasCurrentArmedState(
             outputAreaBitmaps[21], self.AREA_STATE_ARMED
         )
