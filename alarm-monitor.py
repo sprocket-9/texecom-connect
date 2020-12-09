@@ -57,9 +57,9 @@ class TexecomMqtt:
                     if len(topic_areamaps) >= subtopicIdx:
                         areamap = topic_areamaps[subtopicIdx]
                         area_bitmap = bytes.fromhex(areamap)
-                        if message.payload.decode("utf-8") == "arm":
+                        if message.payload.decode("utf-8") == "ARM_AWAY":
                             tc.requestArmAreas(area_bitmap)
-                        elif message.payload.decode("utf-8") == "disarm":
+                        elif message.payload.decode("utf-8") == "DISARM":
                             tc.requestDisArmAreas(area_bitmap)
                         elif message.payload.decode("utf-8") == "reset":
                             tc.requestResetAreas(area_bitmap)
@@ -80,8 +80,8 @@ class TexecomMqtt:
             "name": name,
             "device_class": HAZoneType,
             "state_topic": statetopic,
-            "payload_on": "1",
-            "payload_off": "0",
+            "payload_on": "True",
+            "payload_off": "False",
             "unique_id": ".".join([panelType, name]),
             "device": {
                 "name": "Texecom " + panelType + " " + str(numberOfZones),
