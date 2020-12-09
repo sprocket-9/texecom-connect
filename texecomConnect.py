@@ -588,7 +588,9 @@ class TexecomConnect(TexecomDefines):
                     newState = self.AREA_STATE_DISARMED
                 else:
                     newState = area.state
-            if area.state != newState:
+            # If we know that the area is part armed, don't override that with fully armed
+            # (since area flags only gives us a binary armed / disarmed and not part armed)
+            if area.state != newState and area.state != self.AREA_STATE_PARTARMED and newState != self.AREA_STATE_ARMED:
                 area.save_state(newState)
                 if self.area_event_func is not None:
                     self.area_event_func(area)
