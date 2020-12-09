@@ -158,10 +158,10 @@ class TexecomConnect(TexecomDefines):
                 self.zone_details_func(zone, self.panelType, self.numberOfZones)
         return zone
 
-    def arm_disarm_reset_area(self, cmd, area_bitmap):
+    def arm_disarm_reset_area(self, cmd, arm_type, area_bitmap):
         """CMD_ARMAREAS, CMD_DISARMAREAS, CMD_RESETAREAS"""
         if cmd == self.CMD_ARMAREAS:
-            body = self.ARMING_TYPE_FULL + area_bitmap[0 : self.areaBitmapSize]
+            body = arm_type + area_bitmap[0 : self.areaBitmapSize]
         elif cmd == self.CMD_DISARMAREAS or cmd == self.CMD_RESETAREAS:
             body = area_bitmap[0 : self.areaBitmapSize]
         else:
@@ -183,7 +183,10 @@ class TexecomConnect(TexecomDefines):
             )
             return False
         if cmd == self.CMD_ARMAREAS:
-            cmdText = "arm"
+            if arm_type == self.ARMING_TYPE_FULL:
+                cmdText = "arm"
+            else:
+                cmdText = "part arm"
         elif cmd == self.CMD_DISARMAREAS:
             cmdText = "disarm"
         elif cmd == self.CMD_RESETAREAS:
@@ -658,15 +661,19 @@ class TexecomConnect(TexecomDefines):
 
     def requestArmAreas(self, area_bitmap):
         """Queue arm areas request. Request is queued for processing by main thread"""
-        self.arm_disarm_reset_queue.append((self.CMD_ARMAREAS, area_bitmap))
+        self.arm_disarm_reset_queue.append((self.CMD_ARMAREAS, self.ARMING_TYPE_FULL, area_bitmap))
+
+    def requestPartArmAreas(self, area_bitmap):
+        """Queue part arm areas request. Request is queued for processing by main thread"""
+        self.arm_disarm_reset_queue.append((self.CMD_ARMAREAS, self.ARMING_TYPE_PART1, area_bitmap))
 
     def requestDisArmAreas(self, area_bitmap):
         """Queue disarm areas request. Request is queued for processing by main thread"""
-        self.arm_disarm_reset_queue.append((self.CMD_DISARMAREAS, area_bitmap))
+        self.arm_disarm_reset_queue.append((self.CMD_DISARMAREAS, None, area_bitmap))
 
     def requestResetAreas(self, area_bitmap):
         """Queue reset areas request. Request is queued for processing by main thread"""
-        self.arm_disarm_reset_queue.append((self.CMD_RESETAREAS, area_bitmap))
+        self.arm_disarm_reset_queue.append((self.CMD_RESETAREAS, None, area_bitmap))
 
     def set_area_state(self, area, area_state):
         area.state = area_state
@@ -910,7 +917,7 @@ class TexecomConnect(TexecomDefines):
             if self.last_command is None and len(self.arm_disarm_reset_queue) > 0:
                 # when no command waiting, drain any arm_disarm_reset queue
                 request = self.arm_disarm_reset_queue.pop(0)
-                self.arm_disarm_reset_area(request[0], request[1])
+                self.arm_disarm_reset_area(request[0], request[1], request[2])
             elif time_since_last_command > 30:
                 # get_changed_zones_state and get_armed_area_state to protect against any lost event messages for zone/area status
                 # and to reset the panel's 60 second timeout

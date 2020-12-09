@@ -59,6 +59,8 @@ class TexecomMqtt:
                         area_bitmap = bytes.fromhex(areamap)
                         if message.payload.decode("utf-8") == "ARM_AWAY":
                             tc.requestArmAreas(area_bitmap)
+                        elif message.payload.decode("utf-8") == "ARM_HOME":
+                            tc.requestPartArmAreas(area_bitmap)
                         elif message.payload.decode("utf-8") == "DISARM":
                             tc.requestDisArmAreas(area_bitmap)
                         elif message.payload.decode("utf-8") == "reset":
