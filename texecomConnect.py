@@ -890,7 +890,7 @@ class TexecomConnect(TexecomDefines):
     def connect(self):
         self.s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.s.settimeout(self.CMD_TIMEOUT)
-        self.s.connect((self.host, self.port))
+        self.s.connect((self.host, int(self.port)))
         # if we send the login message to fast the panel ignores it; texecom
         # recommend 500ms, see:
         # http://texecom.websitetoolbox.com/post/show_single_post?pid=1303528828&postcount=4&forum=627911
