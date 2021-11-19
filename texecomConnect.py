@@ -414,7 +414,7 @@ class TexecomConnect(TexecomDefines):
         details = self.sendcommand(self.CMD_GETZONECHANGES, None)
         if details is None:
             return None
-        if len(details) == self.zoneBitmapSize + 2:
+        if len(details) == self.zoneBitmapSize:
             changedZonesBitmap = details
             return changedZonesBitmap
         else:
