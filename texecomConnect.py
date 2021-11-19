@@ -311,7 +311,7 @@ class TexecomConnect(TexecomDefines):
             2000 + datetimeresp[2],
             datetimeresp[1],
             datetimeresp[0],
-            (*datetimeresp[3:]),
+            *datetimeresp[3:],
         )
         seconds = int((paneltime - datetime.datetime.now()).total_seconds())
         if seconds > 0:
